@@ -151,6 +151,103 @@ mcpServer.registerTool("getConsoleLogs", {
   };
 });
 
+// Register click tool
+mcpServer.registerTool("click", {
+  description: "Click on an element identified by a CSS selector",
+  inputSchema: {
+    selector: z.string().describe("CSS selector to identify the element to click"),
+    button: z.enum(["left", "right", "middle"]).optional().describe("Mouse button to use (default: left)"),
+    clickCount: z.number().min(1).max(3).optional().describe("Number of clicks (default: 1)"),
+    timeout: z.number().min(0).max(30000).optional().describe("Maximum time to wait for element in milliseconds (default: 5000)")
+  },
+}, async ({ selector, button, clickCount, timeout }) => {
+  const p = await ensurePage();
+  
+  try {
+    // Wait for element to be available and click it
+    await p.click(selector, {
+      button: button ?? "left",
+      clickCount: clickCount ?? 1,
+      timeout: timeout ?? 5000
+    });
+    
+    const currentUrl = p.url();
+    const pageTitle = await p.title();
+    
+    // Try to get some info about the clicked element
+    const elementInfo = await p.evaluate((sel) => {
+      const element = document.querySelector(sel);
+      if (!element) return null;
+      return {
+        tagName: element.tagName.toLowerCase(),
+        textContent: element.textContent?.trim().substring(0, 100) || '',
+        className: element.className || '',
+        id: element.id || ''
+      };
+    }, selector);
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Successfully clicked element: ${selector}
+Page: ${currentUrl}
+Title: ${pageTitle}
+Element: <${elementInfo?.tagName}${elementInfo?.id ? ` id="${elementInfo.id}"` : ''}${elementInfo?.className ? ` class="${elementInfo.className}"` : ''}>${elementInfo?.textContent ? elementInfo.textContent + '...' : ''}`
+        }
+      ]
+    };
+  } catch (error) {
+    throw new Error(`Click failed: ${error instanceof Error ? error.message : 'Unknown error'}. Selector: ${selector}`);
+  }
+});
+
+// Register getContent tool
+mcpServer.registerTool("getContent", {
+  description: "Get the full HTML content of the current page",
+  inputSchema: {
+    includeMetadata: z.boolean().optional().describe("Whether to include page metadata like title and URL (default: true)")
+  },
+}, async ({ includeMetadata }) => {
+  const p = await ensurePage();
+  
+  try {
+    const htmlContent = await p.content();
+    const currentUrl = p.url();
+    const pageTitle = await p.title();
+    const contentLength = htmlContent.length;
+    
+    const shouldIncludeMetadata = includeMetadata ?? true;
+    
+    if (shouldIncludeMetadata) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Page Content:
+URL: ${currentUrl}
+Title: ${pageTitle}
+Content Length: ${contentLength} characters
+
+${htmlContent}`
+          }
+        ]
+      };
+    } else {
+      return {
+        content: [
+          {
+            type: "text",
+            text: htmlContent
+          }
+        ]
+      };
+    }
+  } catch (error) {
+    throw new Error(`Failed to get page content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+});
+
 async function main() {
   const shutdown = async () => {
     try {
@@ -247,7 +344,7 @@ async function main() {
             <p>Server is running on port ${port}</p>
             <p>SSE endpoint: <code>/sse</code></p>
             <p>Message endpoint: <code>${messageEndpoint}</code></p>
-            <p>Available tools: navigate, screenshot, getConsoleLogs</p>
+            <p>Available tools: navigate, screenshot, getConsoleLogs, click, getContent</p>
             <p>Connection status: ${activeTransport ? 'Connected' : 'Disconnected'}</p>
           </body>
         </html>
