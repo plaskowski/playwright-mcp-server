@@ -61,27 +61,27 @@ The server will start on `http://localhost:3000` with:
 
 4. **Restart Cursor** to load the MCP server
 
-### Claude Desktop App
+### Claude Code (VS Code Extension)
 
-1. **Locate Claude config file:**
-   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+1. **Install Claude Code extension** in VS Code
 
-2. **Add server configuration:**
+2. **Open VS Code Settings** (Cmd/Ctrl + ,)
+
+3. **Search for "Claude MCP"** or navigate to Extensions → Claude Code
+
+4. **Add MCP Server Configuration:**
    ```json
    {
-     "mcpServers": {
-       "browserAutomation": {
-         "command": "node",
-         "args": ["/path/to/playwright-mcp-server/dist/server.js"],
-         "transport": "sse",
-         "url": "http://localhost:3000"
-       }
+     "browserAutomation": {
+       "command": "node",
+       "args": ["/path/to/playwright-mcp-server/dist/server.js"],
+       "transport": "sse", 
+       "url": "http://localhost:3000"
      }
    }
    ```
 
-3. **Restart Claude Desktop**
+5. **Reload VS Code window** (Cmd/Ctrl + Shift + P → "Developer: Reload Window")
 
 ### Other MCP-Compatible Clients
 
