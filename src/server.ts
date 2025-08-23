@@ -7,6 +7,12 @@ import { URL } from "url";
 
 let context: BrowserContext | null = null;
 let page: Page | null = null;
+let consoleLogs: Array<{
+  type: string;
+  text: string;
+  timestamp: string;
+  location?: string;
+}> = [];
 
 /** Ensure we have a headed Chromium and one visible page */
 async function ensurePage(): Promise<Page> {
@@ -17,6 +23,25 @@ async function ensurePage(): Promise<Page> {
   });
 
   page = context.pages()[0] ?? await context.newPage();
+  
+  // Set up console listener to capture logs
+  page.on('console', msg => {
+    const timestamp = new Date().toISOString();
+    const location = msg.location() ? `${msg.location().url}:${msg.location().lineNumber}:${msg.location().columnNumber}` : undefined;
+    
+    consoleLogs.push({
+      type: msg.type(),
+      text: msg.text(),
+      timestamp,
+      location
+    });
+    
+    // Keep only the last 1000 console messages to prevent memory bloat
+    if (consoleLogs.length > 1000) {
+      consoleLogs = consoleLogs.slice(-1000);
+    }
+  });
+  
   return page;
 }
 
@@ -83,6 +108,47 @@ mcpServer.registerTool("screenshot", {
   } catch (error) {
     throw new Error(`Screenshot failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+});
+
+// Register console logs tool
+mcpServer.registerTool("getConsoleLogs", {
+  description: "Retrieve console logs from the browser page",
+  inputSchema: {
+    clear: z.boolean().optional().describe("Whether to clear the logs after retrieving them (default: false)"),
+    logType: z.enum(["log", "info", "warn", "warning", "error", "debug"]).optional().describe("Filter by log type (optional)"),
+    limit: z.number().min(1).max(1000).optional().describe("Maximum number of recent logs to return (default: 100)")
+  },
+}, async ({ clear, logType, limit }) => {
+  await ensurePage(); // Ensure page exists and console listener is set up
+  
+  let logs = consoleLogs;
+  
+  // Filter by log type if specified
+  if (logType) {
+    logs = logs.filter(log => log.type === logType);
+  }
+  
+  // Limit the number of logs returned
+  const maxLogs = limit ?? 100;
+  logs = logs.slice(-maxLogs);
+  
+  const logText = logs.length > 0 
+    ? logs.map(log => `[${log.timestamp}] ${log.type.toUpperCase()}: ${log.text}${log.location ? ` (${log.location})` : ''}`).join('\n')
+    : "No console logs found.";
+  
+  // Clear logs if requested
+  if (clear) {
+    consoleLogs = [];
+  }
+  
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Console Logs (${logs.length} entries):\n\n${logText}`
+      }
+    ]
+  };
 });
 
 async function main() {
@@ -181,7 +247,7 @@ async function main() {
             <p>Server is running on port ${port}</p>
             <p>SSE endpoint: <code>/sse</code></p>
             <p>Message endpoint: <code>${messageEndpoint}</code></p>
-            <p>Available tools: navigate, screenshot</p>
+            <p>Available tools: navigate, screenshot, getConsoleLogs</p>
             <p>Connection status: ${activeTransport ? 'Connected' : 'Disconnected'}</p>
           </body>
         </html>
