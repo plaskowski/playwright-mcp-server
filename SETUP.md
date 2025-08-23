@@ -61,27 +61,43 @@ The server will start on `http://localhost:3000` with:
 
 4. **Restart Cursor** to load the MCP server
 
-### Claude Code (VS Code Extension)
+### Claude Code (CLI Tool)
 
-1. **Install Claude Code extension** in VS Code
+1. **Install Claude Code CLI:**
+   ```bash
+   npm install -g @anthropic-ai/claude-code
+   ```
 
-2. **Open VS Code Settings** (Cmd/Ctrl + ,)
+2. **Create MCP configuration file:**
+   ```bash
+   mkdir -p ~/.config/claude-code
+   ```
 
-3. **Search for "Claude MCP"** or navigate to Extensions → Claude Code
-
-4. **Add MCP Server Configuration:**
+3. **Add server configuration** (`~/.config/claude-code/config.json`):
    ```json
    {
-     "browserAutomation": {
-       "command": "node",
-       "args": ["/path/to/playwright-mcp-server/dist/server.js"],
-       "transport": "sse", 
-       "url": "http://localhost:3000"
+     "mcpServers": {
+       "browserAutomation": {
+         "command": "node",
+         "args": ["/path/to/playwright-mcp-server/dist/server.js"],
+         "transport": "sse",
+         "url": "http://localhost:3000"
+       }
      }
    }
    ```
 
-5. **Reload VS Code window** (Cmd/Ctrl + Shift + P → "Developer: Reload Window")
+4. **Usage workflow:**
+   ```bash
+   # Terminal 1: Start the MCP server
+   cd /path/to/playwright-mcp-server  
+   npm start
+   
+   # Terminal 2: Start Claude Code CLI
+   claude-code --mcp-config ~/.config/claude-code/config.json
+   ```
+
+   **Note:** Keep both terminals running - Claude Code CLI connects to the MCP server via HTTP/SSE.
 
 ### Other MCP-Compatible Clients
 
@@ -125,15 +141,23 @@ The server accepts these environment variables:
    Should return HTML status page showing available tools.
 
 2. **Test MCP connection:**
-   In your MCP client, the server should appear as "browserAutomation" with tools:
-   - `navigate`
-   - `screenshot` 
-   - `getConsoleLogs`
-   - `click`
-   - `getContent`
+   
+   **For Cursor/IDE clients:**
+   The server should appear as "browserAutomation" with tools: `navigate`, `screenshot`, `getConsoleLogs`, `click`, `getContent`
+   
+   **For Claude Code CLI:**
+   ```bash
+   # Start the MCP server first
+   npm start
+   
+   # In another terminal, start Claude Code
+   claude-code --mcp-config ~/.config/claude-code/config.json
+   
+   # Claude should show available MCP tools on startup
+   ```
 
 3. **Test basic functionality:**
-   Try navigating to a website and taking a screenshot to verify the browser automation works.
+   Try asking Claude to navigate to a website and take a screenshot to verify the browser automation works.
 
 ## Troubleshooting
 
