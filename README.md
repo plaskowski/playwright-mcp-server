@@ -27,3 +27,9 @@ The server will expose **browser automation commands** as MCP tools, so the agen
 - A defined set of MCP tools (navigate, click, type, evaluate, screenshot, etc.).
 - Example configuration for use in Cursor Agent.
 - Documentation and usage examples.
+
+## Getting Started
+
+📋 **[Setup Guide](SETUP.md)** - Complete installation and configuration instructions for local development and MCP client integration.
+
+🤖 **[Agent Guide](AGENT_GUIDE.md)** - Essential concepts and workflows for AI agents using this server.
