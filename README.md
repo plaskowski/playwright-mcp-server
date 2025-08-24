@@ -28,7 +28,30 @@ The server will expose **browser automation commands** as MCP tools, so the agen
 - Example configuration for use in Cursor Agent.
 - Documentation and usage examples.
 
-## Getting Started
+## Quick Start
+
+### Install & Run (Recommended)
+```bash
+# Install globally from the package
+npm install -g ./playwright-mcp-server-0.1.0.tgz
+
+# Start the server
+playwright-mcp-server
+```
+
+### Build from Source
+```bash
+# Clone and setup
+git clone <repository-url>
+cd playwright-mcp-server
+npm install
+
+# Build and run
+npm run build
+npm start
+```
+
+## Documentation
 
 📋 **[Setup Guide](SETUP.md)** - Complete installation and configuration instructions for local development and MCP client integration.
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { chromium, BrowserContext, Page } from "playwright";
@@ -14,12 +15,29 @@ let consoleLogs: Array<{
   location?: string;
 }> = [];
 
-/** Ensure we have a headed Chromium and one visible page */
+/** Ensure we have a Chromium browser and one page (headed in dev, headless in containers) */
 async function ensurePage(): Promise<Page> {
   if (page && !page.isClosed()) return page;
 
+  // Auto-detect environment: headless in Docker/CI, headed for local development
+  const isContainerEnv = process.env.DOCKER_CONTAINER === 'true' || 
+                          process.env.CI === 'true' ||
+                          process.env.DISPLAY === ':99' ||
+                          !process.env.DISPLAY;
+  
+  const headlessMode = process.env.BROWSER_HEADLESS === 'true' || isContainerEnv;
+
+  console.log(`Starting browser in ${headlessMode ? 'headless' : 'headed'} mode (container: ${isContainerEnv})`);
+
   context = await chromium.launchPersistentContext("./.pw-profile", {
-    headless: false
+    headless: headlessMode,
+    // Browser args for better container compatibility
+    args: headlessMode ? [
+      '--no-sandbox',
+      '--disable-setuid-sandbox', 
+      '--disable-dev-shm-usage',
+      '--disable-gpu'
+    ] : []
   });
 
   page = context.pages()[0] ?? await context.newPage();

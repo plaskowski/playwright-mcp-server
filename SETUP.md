@@ -1,12 +1,39 @@
 # Browser MCP Server - Setup Guide
 
-## Prerequisites
+## 🚀 Quick Start (Recommended)
+
+### Global Installation
+The easiest way to get started is installing the package globally:
+
+```bash
+# Install globally from npm registry (when published)
+npm install -g playwright-mcp-server
+
+# Or install from local distribution
+npm install -g ./playwright-mcp-server-0.1.0.tgz
+```
+
+### Usage
+```bash
+# Start the server anywhere
+playwright-mcp-server
+```
+
+**Benefits:**
+- ✅ Automatic browser installation
+- ✅ Available as system command  
+- ✅ No need to clone repository
+- ✅ Optimized for AI agent integration
+
+---
+
+## Prerequisites (Development)
 
 - **Node.js 18+** 
 - **npm** or **yarn**
 - **Git**
 
-## Local Installation
+## Local Development Installation
 
 1. **Clone the repository:**
    ```bash
