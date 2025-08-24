@@ -5,6 +5,43 @@ import { chromium, BrowserContext, Page } from "playwright";
 import { z } from "zod";
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { URL } from "url";
+import { promises as fs } from "fs";
+import { join, dirname } from "path";
+import { homedir } from "os";
+
+// Logging setup
+const LOG_DIR = join(homedir(), '.playwright-mcp-server', 'logs');
+const LOG_FILE = join(LOG_DIR, `mcp-server-${new Date().toISOString().slice(0, 10)}.log`);
+
+async function ensureLogDir() {
+  try {
+    await fs.mkdir(LOG_DIR, { recursive: true });
+  } catch (error) {
+    console.error('Failed to create log directory:', error);
+  }
+}
+
+async function log(level: 'INFO' | 'ERROR' | 'DEBUG', message: string, data?: any) {
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    level,
+    message,
+    data: data ? JSON.stringify(data, null, 2) : undefined
+  };
+  
+  const logLine = `[${timestamp}] ${level}: ${message}${data ? '\n' + JSON.stringify(data, null, 2) : ''}\n`;
+  
+  // Log to console
+  console.log(`[${level}] ${message}`, data || '');
+  
+  // Log to file
+  try {
+    await fs.appendFile(LOG_FILE, logLine);
+  } catch (error) {
+    console.error('Failed to write to log file:', error);
+  }
+}
 
 let context: BrowserContext | null = null;
 let page: Page | null = null;
@@ -68,6 +105,10 @@ const mcpServer = new McpServer({
   version: "0.1.0"
 });
 
+// Initialize logging
+await ensureLogDir();
+await log('INFO', 'MCP Server initialized', { name: "mcp-browser-min", version: "0.1.0" });
+
 // Register the navigate tool
 mcpServer.registerTool("navigate", {
   description: "Navigate the browser to a URL (starts Chromium if needed).",
@@ -78,15 +119,24 @@ mcpServer.registerTool("navigate", {
       .describe("Navigation lifecycle event to await (default: domcontentloaded)")
   },
 }, async ({ url, waitUntil }) => {
-  const p = await ensurePage();
-  await p.goto(url, { waitUntil: waitUntil ?? "domcontentloaded" });
-  const title = await p.title();
-  return {
-    content: [
-      { type: "text", text: `Navigated to ${url}\nTitle: ${title}` }
-    ]
-  };
+  await log('INFO', 'Tool called: navigate', { url, waitUntil });
+  try {
+    const p = await ensurePage();
+    await p.goto(url, { waitUntil: waitUntil ?? "domcontentloaded" });
+    const title = await p.title();
+    const result = {
+      content: [
+        { type: "text" as const, text: `Navigated to ${url}\nTitle: ${title}` }
+      ]
+    };
+    await log('INFO', 'Tool navigate completed successfully', { url, title });
+    return result;
+  } catch (error) {
+    await log('ERROR', 'Tool navigate failed', { url, error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
 });
+await log('INFO', 'Registered tool: navigate');
 
 // Register the screenshot tool
 mcpServer.registerTool("screenshot", {
@@ -96,9 +146,10 @@ mcpServer.registerTool("screenshot", {
     quality: z.number().min(1).max(100).optional().describe("JPEG quality 1-100, only applies if format is jpeg (default: 80)")
   },
 }, async ({ fullPage, quality }) => {
-  const p = await ensurePage();
-  
+  await log('INFO', 'Tool called: screenshot', { fullPage, quality });
   try {
+    const p = await ensurePage();
+    
     // Take screenshot as PNG buffer
     const screenshotBuffer = await p.screenshot({ 
       fullPage: fullPage ?? false,
@@ -110,23 +161,32 @@ mcpServer.registerTool("screenshot", {
     const currentUrl = p.url();
     const pageTitle = await p.title();
     
-    return {
+    const result = {
       content: [
         { 
-          type: "text", 
+          type: "text" as const, 
           text: `Screenshot captured from: ${currentUrl}\nPage title: ${pageTitle}\nFull page: ${fullPage ?? false}\nSize: ${Math.round(screenshotBuffer.length / 1024)}KB` 
         },
         {
-          type: "image",
+          type: "image" as const,
           data: base64Screenshot,
           mimeType: "image/png"
         }
       ]
     };
+    await log('INFO', 'Tool screenshot completed successfully', { 
+      url: currentUrl, 
+      title: pageTitle, 
+      fullPage: fullPage ?? false, 
+      sizeKB: Math.round(screenshotBuffer.length / 1024) 
+    });
+    return result;
   } catch (error) {
+    await log('ERROR', 'Tool screenshot failed', { fullPage, error: error instanceof Error ? error.message : String(error) });
     throw new Error(`Screenshot failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 });
+await log('INFO', 'Registered tool: screenshot');
 
 // Register console logs tool
 mcpServer.registerTool("getConsoleLogs", {
@@ -387,6 +447,13 @@ Wait condition: ${waitUntil ?? "domcontentloaded"}`
     throw new Error(`Page reload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 });
+await log('INFO', 'Registered tool: reload');
+
+// Log summary of all registered tools
+await log('INFO', 'All MCP tools registered successfully', {
+  tools: ['navigate', 'screenshot', 'getConsoleLogs', 'click', 'getContent', 'evaluate', 'reload'],
+  totalTools: 7
+});
 
 async function main() {
   const shutdown = async () => {
@@ -410,6 +477,14 @@ async function main() {
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url!, `http://${req.headers.host}`);
     
+    // Log all incoming requests
+    await log('DEBUG', 'HTTP Request', { 
+      method: req.method, 
+      pathname: url.pathname, 
+      userAgent: req.headers['user-agent'],
+      contentType: req.headers['content-type']
+    });
+    
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -425,22 +500,25 @@ async function main() {
       try {
         // Handle SSE connection - only one at a time
         if (activeTransport) {
+          await log('INFO', 'SSE connection rejected - another connection active');
           res.writeHead(409, { 'Content-Type': 'text/plain' });
           res.end('Another SSE connection is already active');
           return;
         }
         
+        await log('INFO', 'Establishing SSE connection');
         const transport = new SSEServerTransport(messageEndpoint, res);
         activeTransport = transport;
         
         // Clean up when connection closes
         transport.onclose = () => {
+          log('INFO', 'SSE connection closed');
           activeTransport = null;
         };
         
         // Connect the mcpServer - this automatically starts the transport
         await mcpServer.connect(transport);
-        console.log('SSE connection established');
+        await log('INFO', 'SSE connection established and MCP server connected');
       } catch (error) {
         console.error('SSE connection error:', error);
         activeTransport = null;
@@ -459,16 +537,29 @@ async function main() {
       req.on("end", async () => {
         try {
           const parsedBody = JSON.parse(body);
+          await log('DEBUG', 'Received MCP message', { 
+            method: parsedBody.method,
+            id: parsedBody.id,
+            hasParams: !!parsedBody.params 
+          });
           
           // Use the active transport to handle the message
           if (activeTransport) {
             await activeTransport.handlePostMessage(req, res, parsedBody);
+            await log('DEBUG', 'MCP message processed successfully', { 
+              method: parsedBody.method,
+              id: parsedBody.id 
+            });
           } else {
+            await log('ERROR', 'POST message received but no active SSE connection');
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'No active SSE connection' }));
           }
         } catch (error) {
-          console.error('POST message error:', error);
+          await log('ERROR', 'POST message processing failed', { 
+            error: error instanceof Error ? error.message : String(error),
+            bodyLength: body.length 
+          });
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Invalid JSON or processing error' }));
         }
@@ -495,10 +586,17 @@ async function main() {
     }
   });
 
-  server.listen(port, () => {
+  server.listen(port, async () => {
+    await log('INFO', 'HTTP Server started', {
+      port,
+      sseEndpoint: `/sse`,
+      messageEndpoint,
+      logFile: LOG_FILE
+    });
     console.log(`MCP Browser Server is running on http://localhost:${port}`);
     console.log(`SSE endpoint: http://localhost:${port}/sse`);
     console.log(`Message endpoint: http://localhost:${port}${messageEndpoint}`);
+    console.log(`Logs: ${LOG_FILE}`);
   });
 }
 
