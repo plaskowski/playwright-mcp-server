@@ -6,20 +6,23 @@ import { z } from "zod";
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { URL } from "url";
 import { promises as fs } from "fs";
-import { join, dirname } from "path";
-import { homedir } from "os";
+import { initializeConfig, ensureDirectories, writeInstanceMetadata, cleanupInstanceMetadata, type ServerConfig } from "./config.js";
 
-// Logging setup
-const LOG_DIR = join(homedir(), '.playwright-mcp-server', 'logs');
-const LOG_FILE = join(LOG_DIR, `mcp-server-${new Date().toISOString().slice(0, 10)}.log`);
+// Configuration is now handled in config.ts
 
-async function ensureLogDir() {
-  try {
-    await fs.mkdir(LOG_DIR, { recursive: true });
-  } catch (error) {
-    console.error('Failed to create log directory:', error);
-  }
-}
+
+
+
+
+
+
+const config = await initializeConfig();
+
+
+
+
+
+
 
 async function log(level: 'INFO' | 'ERROR' | 'DEBUG', message: string, data?: any) {
   const timestamp = new Date().toISOString();
@@ -32,12 +35,12 @@ async function log(level: 'INFO' | 'ERROR' | 'DEBUG', message: string, data?: an
   
   const logLine = `[${timestamp}] ${level}: ${message}${data ? '\n' + JSON.stringify(data, null, 2) : ''}\n`;
   
-  // Log to console
-  console.log(`[${level}] ${message}`, data || '');
+  // Log to console with instance prefix
+  console.log(`[${config.port}] [${level}] ${message}`, data || '');
   
   // Log to file
   try {
-    await fs.appendFile(LOG_FILE, logLine);
+    await fs.appendFile(config.INSTANCE_LOG_FILE, logLine);
   } catch (error) {
     console.error('Failed to write to log file:', error);
   }
@@ -66,7 +69,7 @@ async function ensurePage(): Promise<Page> {
 
   console.log(`Starting browser in ${headlessMode ? 'headless' : 'headed'} mode (container: ${isContainerEnv})`);
 
-  context = await chromium.launchPersistentContext("./.pw-profile", {
+  context = await chromium.launchPersistentContext(config.BROWSER_PROFILE, {
     headless: headlessMode,
     // Browser args for better container compatibility
     args: headlessMode ? [
@@ -105,9 +108,20 @@ const mcpServer = new McpServer({
   version: "0.1.0"
 });
 
-// Initialize logging
-await ensureLogDir();
-await log('INFO', 'MCP Server initialized', { name: "mcp-browser-min", version: "0.1.0" });
+// Initialize directories and metadata
+await ensureDirectories(config);
+await writeInstanceMetadata(config);
+
+await log('INFO', 'MCP Server instance initialized', { 
+  name: "mcp-browser-min", 
+  version: "0.1.0",
+  port: config.port,
+  instanceDir: config.INSTANCE_DIR,
+  browserProfile: config.BROWSER_PROFILE,
+  logFile: config.INSTANCE_LOG_FILE,
+  metadataFile: config.INSTANCE_METADATA_FILE,
+  pid: process.pid
+});
 
 // Register the navigate tool
 mcpServer.registerTool("navigate", {
@@ -458,8 +472,10 @@ await log('INFO', 'All MCP tools registered successfully', {
 async function main() {
   const shutdown = async () => {
     try {
+      await log('INFO', 'Shutting down MCP Server instance', { port: config.port, pid: process.pid });
       await page?.close().catch(() => {});
       await context?.close().catch(() => {});
+      await cleanupInstanceMetadata(config);
     } finally {
       process.exit(0);
     }
@@ -467,7 +483,7 @@ async function main() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const port = config.port;
   const messageEndpoint = "/message";
   
   // Store single active transport
@@ -591,12 +607,14 @@ async function main() {
       port,
       sseEndpoint: `/sse`,
       messageEndpoint,
-      logFile: LOG_FILE
+      instanceDir: config.INSTANCE_DIR,
+      logFile: config.INSTANCE_LOG_FILE
     });
     console.log(`MCP Browser Server is running on http://localhost:${port}`);
     console.log(`SSE endpoint: http://localhost:${port}/sse`);
     console.log(`Message endpoint: http://localhost:${port}${messageEndpoint}`);
-    console.log(`Logs: ${LOG_FILE}`);
+    console.log(`Instance directory: ${config.INSTANCE_DIR}`);
+    console.log(`Logs: ${config.INSTANCE_LOG_FILE}`);
   });
 }
 
