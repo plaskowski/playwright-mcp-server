@@ -70,6 +70,32 @@ The server will start on `http://localhost:3000` with:
 
 ### Cursor IDE
 
+#### Option 1: Global Installation (Recommended)
+
+1. **Install the server globally:**
+   ```bash
+   npm install -g ./playwright-mcp-server-0.1.0.tgz
+   ```
+
+2. **Open Cursor Settings** (Cmd/Ctrl + ,)
+
+3. **Navigate to Extensions** → **Cursor Tab** → **MCP Servers**
+
+4. **Add new server configuration:**
+   ```json
+   {
+     "browserAutomation": {
+       "command": "playwright-mcp-server",
+       "transport": "sse",
+       "url": "http://localhost:3000"
+     }
+   }
+   ```
+
+5. **Restart Cursor** to load the MCP server
+
+#### Option 2: Local Development
+
 1. **Open Cursor Settings** (Cmd/Ctrl + ,)
 
 2. **Navigate to Extensions** → **Cursor Tab** → **MCP Servers**
@@ -89,6 +115,43 @@ The server will start on `http://localhost:3000` with:
 4. **Restart Cursor** to load the MCP server
 
 ### Claude Code (CLI Tool)
+
+#### Option 1: Global Installation (Recommended)
+
+1. **Install both tools globally:**
+   ```bash
+   npm install -g @anthropic-ai/claude-code
+   npm install -g ./playwright-mcp-server-0.1.0.tgz
+   ```
+
+2. **Create MCP configuration file:**
+   ```bash
+   mkdir -p ~/.config/claude-code
+   ```
+
+3. **Add server configuration** (`~/.config/claude-code/config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "browserAutomation": {
+         "command": "playwright-mcp-server",
+         "transport": "sse",
+         "url": "http://localhost:3000"
+       }
+     }
+   }
+   ```
+
+4. **Usage workflow:**
+   ```bash
+   # Terminal 1: Start the MCP server
+   playwright-mcp-server
+   
+   # Terminal 2: Start Claude Code CLI
+   claude-code --mcp-config ~/.config/claude-code/config.json
+   ```
+
+#### Option 2: Local Development
 
 1. **Install Claude Code CLI:**
    ```bash
