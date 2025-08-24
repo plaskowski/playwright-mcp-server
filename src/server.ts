@@ -248,6 +248,128 @@ ${htmlContent}`
   }
 });
 
+// Register evaluate tool
+mcpServer.registerTool("evaluate", {
+  description: "Execute JavaScript expression in the page context and return the result",
+  inputSchema: {
+    expression: z.string().describe("JavaScript expression to evaluate in the page context"),
+    returnType: z.enum(["json", "string"]).optional().describe("How to format the return value (default: json)")
+  },
+}, async ({ expression, returnType }) => {
+  const p = await ensurePage();
+  
+  try {
+    const result = await p.evaluate((expr) => {
+      // Create a function that returns the evaluated expression
+      try {
+        // Use indirect eval to evaluate in global scope
+        const evalResult = (0, eval)(expr);
+        
+        // Handle different return types
+        if (evalResult === undefined) return { type: 'undefined', value: 'undefined' };
+        if (evalResult === null) return { type: 'null', value: 'null' };
+        if (typeof evalResult === 'function') return { type: 'function', value: evalResult.toString() };
+        if (typeof evalResult === 'object') {
+          try {
+            return { type: 'object', value: JSON.stringify(evalResult, null, 2) };
+          } catch {
+            return { type: 'object', value: '[Object - cannot serialize]' };
+          }
+        }
+        
+        return { type: typeof evalResult, value: String(evalResult) };
+      } catch (error) {
+        return { 
+          type: 'error', 
+          value: error instanceof Error ? error.message : String(error) 
+        };
+      }
+    }, expression);
+    
+    const currentUrl = p.url();
+    const pageTitle = await p.title();
+    const shouldReturnJson = returnType === "json" || returnType === undefined;
+    
+    if (result.type === 'error') {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `JavaScript Evaluation Error:
+Expression: ${expression}
+Page: ${currentUrl}
+Title: ${pageTitle}
+
+Error: ${result.value}`
+          }
+        ]
+      };
+    }
+    
+    const resultText = shouldReturnJson && result.type === 'object' 
+      ? result.value 
+      : `${result.value}`;
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: `JavaScript Evaluation Result:
+Expression: ${expression}
+Page: ${currentUrl}
+Title: ${pageTitle}
+Type: ${result.type}
+
+Result:
+${resultText}`
+        }
+      ]
+    };
+  } catch (error) {
+    throw new Error(`JavaScript evaluation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+});
+
+// Register reload tool
+mcpServer.registerTool("reload", {
+  description: "Reload the current page",
+  inputSchema: {
+    waitUntil: z.enum(["load", "domcontentloaded", "networkidle", "commit"])
+      .optional()
+      .describe("Navigation lifecycle event to await after reload (default: domcontentloaded)"),
+    timeout: z.number().min(0).max(60000).optional().describe("Maximum time to wait for reload in milliseconds (default: 30000)")
+  },
+}, async ({ waitUntil, timeout }) => {
+  const p = await ensurePage();
+  
+  try {
+    const urlBeforeReload = p.url();
+    const titleBeforeReload = await p.title();
+    
+    await p.reload({ 
+      waitUntil: waitUntil ?? "domcontentloaded",
+      timeout: timeout ?? 30000
+    });
+    
+    const urlAfterReload = p.url();
+    const titleAfterReload = await p.title();
+    
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Page reloaded successfully:
+URL: ${urlAfterReload}${urlBeforeReload !== urlAfterReload ? ` (was: ${urlBeforeReload})` : ''}
+Title: ${titleAfterReload}${titleBeforeReload !== titleAfterReload ? ` (was: ${titleBeforeReload})` : ''}
+Wait condition: ${waitUntil ?? "domcontentloaded"}`
+        }
+      ]
+    };
+  } catch (error) {
+    throw new Error(`Page reload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+});
+
 async function main() {
   const shutdown = async () => {
     try {
@@ -344,7 +466,7 @@ async function main() {
             <p>Server is running on port ${port}</p>
             <p>SSE endpoint: <code>/sse</code></p>
             <p>Message endpoint: <code>${messageEndpoint}</code></p>
-            <p>Available tools: navigate, screenshot, getConsoleLogs, click, getContent</p>
+            <p>Available tools: navigate, screenshot, getConsoleLogs, click, getContent, evaluate, reload</p>
             <p>Connection status: ${activeTransport ? 'Connected' : 'Disconnected'}</p>
           </body>
         </html>
