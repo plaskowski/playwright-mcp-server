@@ -1,0 +1,40 @@
+# Cursor Rules for playwright-mcp-server
+
+## Project Guidelines
+
+### Code Management
+- **Always commit after completing any incremental work**: After the AI agent finishes editing code and the changes are tested/verified, always commit the changes with a descriptive commit message.
+- Use clear, descriptive commit messages following conventional commit format (feat:, fix:, refactor:, docs:, etc.)
+- Stage all relevant files before committing
+
+### Development Workflow
+- Build and test changes before committing
+- Use `npm run build` to verify TypeScript compilation
+- Test server startup and basic functionality after significant changes
+- Update documentation when adding new features or changing behavior
+
+### Code Quality
+- Maintain clean separation of concerns (configuration, server logic, tools)
+- Use proper TypeScript types and interfaces
+- Include error handling for file operations and network requests
+- Add logging for debugging and monitoring
+
+### Testing
+- Test multi-instance scenarios when making configuration changes
+- Verify CLI argument parsing works correctly
+- Check that all tools are properly registered and functional
+- Test SSE transport and MCP protocol compliance
+
+### Documentation
+- Update README.md for user-facing changes
+- Update SETUP.md for installation/configuration changes
+- Update AGENT_GUIDE.md for new tools or workflow changes
+- Keep docs in sync with actual implementation
+
+### Commit Strategy
+After any editing session where changes are made:
+1. Build the project (`npm run build`)
+2. Test basic functionality
+3. Stage changes (`git add .`)
+4. Commit with descriptive message
+5. This ensures incremental progress is always preserved
