@@ -73,51 +73,103 @@ npm start -- --port 3010
 
 ## Directory Structure
 
-The server organizes all files under `~/.playwright-mcp-server/`:
+The server organizes all files under `~/.playwright-mcp-server/` with complete instance isolation:
 
 ```
 ~/.playwright-mcp-server/
-├── instances/                           # Instance-specific data
-│   ├── port-3000/                      # Instance on port 3000
-│   │   ├── browser/                     # Playwright browser profile
-│   │   ├── logs/                        # Instance-specific logs
-│   │   │   └── mcp-server-2025-08-24.log
-│   │   └── instance.json                # Instance metadata (port, PID, etc)
-│   ├── port-3001/                      # Instance on port 3001
-│   │   ├── browser/
-│   │   ├── logs/
-│   │   └── instance.json
-│   └── port-3002/                      # Instance on port 3002
+├── instances/                           # Instance-specific data (isolated by port)
+│   ├── port-3000/                      # Instance running on port 3000
+│   │   ├── browser/                     # Chromium browser profile & user data
+│   │   │   ├── Default/                 # Browser session data, cookies, localStorage
+│   │   │   └── ...                      # Playwright browser profile files
+│   │   ├── logs/                        # Instance-specific detailed logs
+│   │   │   └── mcp-server-2025-08-24.log  # Daily log file with all MCP requests/responses
+│   │   └── instance.json                # Runtime metadata for this instance
+│   ├── port-3001/                      # Instance running on port 3001
+│   │   ├── browser/                     # Separate browser profile (no session conflicts)
+│   │   ├── logs/                        # Separate log files
+│   │   └── instance.json                # Separate runtime metadata
+│   └── port-3002/                      # Instance running on port 3002
 │       ├── browser/
 │       ├── logs/
 │       └── instance.json
-├── logs/                                # Global startup logs
-│   └── startup-2025-08-24.log
-└── config/                             # Future configuration files
+├── logs/                                # Global server startup logs
+│   └── startup-2025-08-24.log          # High-level startup/shutdown events
+└── config/                             # Future: global configuration files
+    └── (reserved for future features)
+```
+
+### Instance Metadata Format
+
+Each `instance.json` contains runtime information:
+
+```json
+{
+  "port": 3000,
+  "pid": 12345,
+  "startTime": "2025-08-24T12:01:23.854Z",
+  "browserProfile": "/Users/user/.playwright-mcp-server/instances/port-3000/browser",
+  "logFile": "/Users/user/.playwright-mcp-server/instances/port-3000/logs/mcp-server-2025-08-24.log",
+  "version": "0.1.0"
+}
 ```
 
 ### Instance Management
 
-Each instance is completely isolated:
-- **Separate browser profiles**: No session conflicts between instances
-- **Separate log files**: Easy debugging and monitoring per instance  
-- **Separate metadata**: Track PID, port, startup time per instance
-- **Automatic cleanup**: Instance metadata removed on shutdown
+Each instance runs completely isolated with no conflicts:
+
+- **🔒 Separate browser profiles**: Each instance has its own Chromium profile with independent:
+  - Cookies and session storage
+  - Local storage and IndexedDB
+  - Browser cache and history
+  - Extensions and preferences
+
+- **📝 Separate log files**: Each instance writes detailed logs including:
+  - All incoming MCP requests and responses  
+  - Tool execution results and errors
+  - Browser automation events
+  - Performance metrics and timestamps
+
+- **📊 Runtime metadata**: Track operational details per instance:
+  - Process ID (PID) for process management
+  - Startup time and version information
+  - File system paths for debugging
+  - Port binding for network isolation
+
+- **🧹 Automatic cleanup**: Instance metadata is automatically:
+  - Created on startup with current runtime info
+  - Updated during operation if needed
+  - Removed on graceful shutdown
+  - Left behind only if process crashes (for debugging)
 
 ### Instance Commands
 
 ```bash
-# Check all running instances
+# List all instances (running and stopped)
 ls ~/.playwright-mcp-server/instances/
 
-# View instance metadata
+# Check which instances are currently running
+ps aux | grep "[n]ode dist/server.js"
+
+# View instance metadata and status
 cat ~/.playwright-mcp-server/instances/port-3000/instance.json
 
-# Monitor specific instance logs
+# Monitor real-time logs for specific instance
 tail -f ~/.playwright-mcp-server/instances/port-3000/logs/mcp-server-$(date +%Y-%m-%d).log
 
-# Clean up stopped instances (if needed)
-find ~/.playwright-mcp-server/instances -name "instance.json" -exec cat {} \; | grep -v "$(ps aux | grep playwright-mcp-server)"
+# Check instance directory size (browser cache can grow)
+du -sh ~/.playwright-mcp-server/instances/port-*/
+
+# Manual cleanup of stopped instances (if metadata left behind)
+for dir in ~/.playwright-mcp-server/instances/port-*; do
+  if [ -f "$dir/instance.json" ]; then
+    pid=$(cat "$dir/instance.json" | grep '"pid"' | cut -d: -f2 | tr -d ' ,')
+    if ! ps -p $pid > /dev/null 2>&1; then
+      echo "Cleaning up stopped instance: $dir"
+      rm "$dir/instance.json"
+    fi
+  fi
+done
 ```
 
 ## Documentation
